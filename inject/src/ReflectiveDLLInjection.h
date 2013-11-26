@@ -25,8 +25,8 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
-#ifndef _REFLECTIVEDLLINJECTION_REFLECTIVEDLLINJECTION_H
-#define _REFLECTIVEDLLINJECTION_REFLECTIVEDLLINJECTION_H
+#ifndef _METERPRETER_SOURCE_REFLECTIVEDLLINJECTION_REFLECTIVEDLLINJECTION_H
+#define _METERPRETER_SOURCE_REFLECTIVEDLLINJECTION_REFLECTIVEDLLINJECTION_H
 //===============================================================================================//
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -43,7 +43,7 @@
 #define DEREF_16( name )*(WORD *)(name)
 #define DEREF_8( name )*(BYTE *)(name)
 
-typedef ULONG_PTR (WINAPI * REFLECTIVELOADER)( VOID );
+typedef UINT_PTR (WINAPI * REFLECTIVELOADER)( VOID );
 typedef BOOL (WINAPI * DLLMAIN)( HINSTANCE, DWORD, LPVOID );
 
 #define DLLEXPORT   __declspec( dllexport ) 
