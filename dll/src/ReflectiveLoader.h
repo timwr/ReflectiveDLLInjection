@@ -25,8 +25,8 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
-#ifndef _METERPRETER_SOURCE_REFLECTIVEDLLINJECTION_REFLECTIVELOADER_H
-#define _METERPRETER_SOURCE_REFLECTIVEDLLINJECTION_REFLECTIVELOADER_H
+#ifndef _REFLECTIVEDLLINJECTION_REFLECTIVELOADER_H
+#define _REFLECTIVEDLLINJECTION_REFLECTIVELOADER_H
 //===============================================================================================//
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
