@@ -583,7 +583,7 @@ BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved )
 			bReturnValue = MetasploitDllAttach( (SOCKET)lpReserved );
 			break;
 		case DLL_METASPLOIT_DETACH:
-			bReturnValue = MetasploitDllDetach( (DWORD)lpReserved );
+			bReturnValue = MetasploitDllDetach( (DWORD)((DWORD_PTR)lpReserved & 0xFFFFFFFF) );
 			break;
 		case DLL_QUERY_HMODULE:
 			if( lpReserved != NULL )
