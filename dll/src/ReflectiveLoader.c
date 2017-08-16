@@ -443,11 +443,13 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 	// check if their are any relocations present
 	if( ((PIMAGE_DATA_DIRECTORY)uiValueB)->Size )
 	{
+		uiValueE = ((PIMAGE_BASE_RELOCATION)uiValueB)->SizeOfBlock;
+
 		// uiValueC is now the first entry (IMAGE_BASE_RELOCATION)
 		uiValueC = ( uiBaseAddress + ((PIMAGE_DATA_DIRECTORY)uiValueB)->VirtualAddress );
 
 		// and we itterate through all entries...
-		while( ((PIMAGE_BASE_RELOCATION)uiValueC)->SizeOfBlock )
+		while( uiValueE && ((PIMAGE_BASE_RELOCATION)uiValueC)->SizeOfBlock )
 		{
 			// uiValueA = the VA for this relocation block
 			uiValueA = ( uiBaseAddress + ((PIMAGE_BASE_RELOCATION)uiValueC)->VirtualAddress );
@@ -510,6 +512,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 				uiValueD += sizeof( IMAGE_RELOC );
 			}
 
+			uiValueE -= ((PIMAGE_BASE_RELOCATION)uiValueC)->SizeOfBlock;
 			// get the next entry in the relocation directory
 			uiValueC = uiValueC + ((PIMAGE_BASE_RELOCATION)uiValueC)->SizeOfBlock;
 		}
