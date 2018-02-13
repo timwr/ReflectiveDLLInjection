@@ -144,16 +144,18 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 		uiValueC = 0;
 
 		// compute the hash of the module name...
+		ULONG_PTR tmpValC = uiValueC;
 		do
 		{
-			uiValueC = ror( (DWORD)uiValueC );
+			tmpValC = ror( (DWORD)tmpValC );
 			// normalize to uppercase if the module name is in lowercase
 			if( *((BYTE *)uiValueB) >= 'a' )
-				uiValueC += *((BYTE *)uiValueB) - 0x20;
+				tmpValC += *((BYTE *)uiValueB) - 0x20;
 			else
-				uiValueC += *((BYTE *)uiValueB);
+				tmpValC += *((BYTE *)uiValueB);
 			uiValueB++;
 		} while( --usCounter );
+		uiValueC = tmpValC;
 
 		// compare the hash with that of kernel32.dll
 		if( (DWORD)uiValueC == KERNEL32DLL_HASH )
