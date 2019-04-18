@@ -26,6 +26,12 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
 #include "GetProcAddressR.h"
+
+#ifdef __MINGW32__
+#define __try
+#define __except if
+#endif
+
 //===============================================================================================//
 // We implement a minimal GetProcAddress to avoid using the native kernel32!GetProcAddress which
 // wont be able to resolve exported addresses in reflectivly loaded librarys.

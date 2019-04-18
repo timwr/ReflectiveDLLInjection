@@ -30,8 +30,10 @@
 // Our loader will set this to a pseudo correct HINSTANCE/HMODULE value
 HINSTANCE hAppInstance = NULL;
 //===============================================================================================//
-#pragma intrinsic( _ReturnAddress )
-// This function can not be inlined by the compiler or we will not get the address we expect. Ideally 
+#ifndef __MINGW32__
+#pragma intrinsic(_ReturnAddress)
+#endif 
+// This function can not be inlined by the compiler or we will not get the address we expect. Ideally
 // this code will be compiled with the /O2 and /Ob1 switches. Bonus points if we could take advantage of 
 // RIP relative addressing in this instance but I dont believe we can do so with the compiler intrinsics 
 // available (and no inline asm available under x64).

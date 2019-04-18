@@ -26,6 +26,11 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
 #include "LoadLibraryR.h"
+
+#ifdef __MINGW32__
+#define __try
+#define __except if
+#endif
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress )
 {    
