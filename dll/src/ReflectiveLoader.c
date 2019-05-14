@@ -1,28 +1,28 @@
 //===============================================================================================//
 // Copyright (c) 2013, Stephen Fewer of Harmony Security (www.harmonysecurity.com)
 // All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without modification, are permitted 
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted
 // provided that the following conditions are met:
-// 
-//     * Redistributions of source code must retain the above copyright notice, this list of 
+//
+//     * Redistributions of source code must retain the above copyright notice, this list of
 // conditions and the following disclaimer.
-// 
-//     * Redistributions in binary form must reproduce the above copyright notice, this list of 
-// conditions and the following disclaimer in the documentation and/or other materials provided 
+//
+//     * Redistributions in binary form must reproduce the above copyright notice, this list of
+// conditions and the following disclaimer in the documentation and/or other materials provided
 // with the distribution.
-// 
+//
 //     * Neither the name of Harmony Security nor the names of its contributors may be used to
 // endorse or promote products derived from this software without specific prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR 
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
 // IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
-// FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR 
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
-// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+// FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
 #include "ReflectiveLoader.h"
@@ -32,10 +32,10 @@ HINSTANCE hAppInstance = NULL;
 //===============================================================================================//
 #ifndef __MINGW32__
 #pragma intrinsic(_ReturnAddress)
-#endif 
+#endif
 // This function can not be inlined by the compiler or we will not get the address we expect. Ideally
-// this code will be compiled with the /O2 and /Ob1 switches. Bonus points if we could take advantage of 
-// RIP relative addressing in this instance but I dont believe we can do so with the compiler intrinsics 
+// this code will be compiled with the /O2 and /Ob1 switches. Bonus points if we could take advantage of
+// RIP relative addressing in this instance but I dont believe we can do so with the compiler intrinsics
 // available (and no inline asm available under x64).
 __declspec(noinline) ULONG_PTR caller( VOID ) { return (ULONG_PTR)_ReturnAddress(); }
 //===============================================================================================//
@@ -46,7 +46,7 @@ __declspec(noinline) ULONG_PTR caller( VOID ) { return (ULONG_PTR)_ReturnAddress
 #define OUTPUTDBG(str) do{}while(0)
 #endif
 
-// Note 1: If you want to have your own DllMain, define REFLECTIVEDLLINJECTION_CUSTOM_DLLMAIN,  
+// Note 1: If you want to have your own DllMain, define REFLECTIVEDLLINJECTION_CUSTOM_DLLMAIN,
 //         otherwise the DllMain at the end of this file will be used.
 
 // Note 2: If you are injecting the DLL via LoadRemoteLibraryR, define REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR,
@@ -174,7 +174,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 
 			// get the VA for the array of name pointers
 			uiNameArray = ( uiBaseAddress + ((PIMAGE_EXPORT_DIRECTORY )uiExportDir)->AddressOfNames );
-			
+
 			// get the VA for the array of name ordinals
 			uiNameOrdinals = ( uiBaseAddress + ((PIMAGE_EXPORT_DIRECTORY )uiExportDir)->AddressOfNameOrdinals );
 
@@ -191,7 +191,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 			{
 				// compute the hash values for this function name
 				dwHashValue = _hash( (char *)( uiBaseAddress + DEREF_32( uiNameArray ) )  );
-				
+
 				// if we have found a function we want we get its virtual address
 				if( dwHashValue == LOADLIBRARYA_HASH
 					|| dwHashValue == GETPROCADDRESS_HASH
@@ -225,7 +225,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 					else if( dwHashValue == OUTPUTDEBUG_HASH )
 						pOutputDebug = (OUTPUTDEBUG)( uiBaseAddress + DEREF_32( uiAddressArray ) );
 #endif
-			
+
 					// decrement our counter
 					usCounter--;
 				}
@@ -253,7 +253,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 
 			// get the VA for the array of name pointers
 			uiNameArray = ( uiBaseAddress + ((PIMAGE_EXPORT_DIRECTORY )uiExportDir)->AddressOfNames );
-			
+
 			// get the VA for the array of name ordinals
 			uiNameOrdinals = ( uiBaseAddress + ((PIMAGE_EXPORT_DIRECTORY )uiExportDir)->AddressOfNameOrdinals );
 
@@ -264,7 +264,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 			{
 				// compute the hash values for this function name
 				dwHashValue = _hash( (char *)( uiBaseAddress + DEREF_32( uiNameArray ) )  );
-				
+
 				// if we have found a function we want we get its virtual address
 				if( dwHashValue == NTFLUSHINSTRUCTIONCACHE_HASH )
 				{
@@ -313,7 +313,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 	// get the VA of the NT Header for the PE to be loaded
 	uiHeaderValue = uiLibraryAddress + ((PIMAGE_DOS_HEADER)uiLibraryAddress)->e_lfanew;
 
-	// allocate all the memory for the DLL to be loaded into. we can load at any address because we will  
+	// allocate all the memory for the DLL to be loaded into. we can load at any address because we will
 	// relocate the image. Also zeros all memory and marks it as READ, WRITE and EXECUTE to avoid any problems.
 	uiBaseAddress = (ULONG_PTR)pVirtualAlloc( NULL, ((PIMAGE_NT_HEADERS)uiHeaderValue)->OptionalHeader.SizeOfImage, MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE );
 
@@ -334,7 +334,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 
 	// uiValueA = the VA of the first section
 	uiValueA = ( (ULONG_PTR)&((PIMAGE_NT_HEADERS)uiHeaderValue)->OptionalHeader + ((PIMAGE_NT_HEADERS)uiHeaderValue)->FileHeader.SizeOfOptionalHeader );
-	
+
 	// itterate through all sections, loading them into memory.
 	uiValueE = ((PIMAGE_NT_HEADERS)uiHeaderValue)->FileHeader.NumberOfSections;
 	while( uiValueE-- )
@@ -359,11 +359,11 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 
 	// uiValueB = the address of the import directory
 	uiValueB = (ULONG_PTR)&((PIMAGE_NT_HEADERS)uiHeaderValue)->OptionalHeader.DataDirectory[ IMAGE_DIRECTORY_ENTRY_IMPORT ];
-	
+
 	// we assume there is an import table to process
 	// uiValueC is the first entry in the import table
 	uiValueC = ( uiBaseAddress + ((PIMAGE_DATA_DIRECTORY)uiValueB)->VirtualAddress );
-	
+
 	// iterate through all imports until a null RVA is found (Characteristics is mis-named)
 	while( ((PIMAGE_IMPORT_DESCRIPTOR)uiValueC)->Characteristics )
 	{
@@ -384,7 +384,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 
 		// uiValueD = VA of the OriginalFirstThunk
 		uiValueD = ( uiBaseAddress + ((PIMAGE_IMPORT_DESCRIPTOR)uiValueC)->OriginalFirstThunk );
-	
+
 		// uiValueA = VA of the IAT (via first thunk not origionalfirstthunk)
 		uiValueA = ( uiBaseAddress + ((PIMAGE_IMPORT_DESCRIPTOR)uiValueC)->FirstThunk );
 
@@ -475,7 +475,7 @@ DLLEXPORT ULONG_PTR WINAPI ReflectiveLoader( VOID )
 #ifdef WIN_ARM
 				// Note: On ARM, the compiler optimization /O2 seems to introduce an off by one issue, possibly a code gen bug. Using /O1 instead avoids this problem.
 				else if( ((PIMAGE_RELOC)uiValueD)->type == IMAGE_REL_BASED_ARM_MOV32T )
-				{	
+				{
 					register DWORD dwInstruction;
 					register DWORD dwAddress;
 					register WORD wImm;
@@ -549,7 +549,10 @@ extern DWORD DLLEXPORT Init( SOCKET socket );
 
 BOOL MetasploitDllAttach( SOCKET socket )
 {
+    // never called, but causes an undefined reference when DelayLoading is not supported by the compiler.
+	#ifndef __MINGW32__
 	Init( socket );
+	#endif
 	return TRUE;
 }
 
@@ -577,8 +580,8 @@ BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved )
 {
     BOOL bReturnValue = TRUE;
 
-	switch( dwReason ) 
-    { 
+	switch( dwReason )
+    {
 		case DLL_METASPLOIT_ATTACH:
 			bReturnValue = MetasploitDllAttach( (SOCKET)lpReserved );
 			break;
