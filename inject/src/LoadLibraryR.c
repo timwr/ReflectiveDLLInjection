@@ -26,6 +26,11 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
 #include "LoadLibraryR.h"
+
+#ifdef __MINGW32__
+#define __try
+#define __except(x) if(0)
+#endif
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress, BOOL is64 )
 {
@@ -219,6 +224,7 @@ HANDLE WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLeng
 
 			// alloc memory (RW) in the host process for the image...
 			lpRemoteLibraryBuffer = VirtualAllocEx( hProcess, NULL, dwLength, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE );
+
 			if( !lpRemoteLibraryBuffer )
 				break;
 

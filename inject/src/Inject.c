@@ -31,7 +31,9 @@
 #include <stdlib.h>
 #include "LoadLibraryR.h"
 
+#ifndef __MINGW32__
 #pragma comment(lib,"Advapi32.lib")
+#endif
 
 #define BREAK_WITH_ERROR( e ) { printf( "[-] %s. Error=%d", e, GetLastError() ); break; }
 
