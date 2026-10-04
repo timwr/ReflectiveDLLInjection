@@ -38,6 +38,20 @@ HINSTANCE hAppInstance = NULL;
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4127) // conditional expression is constant
+#else
+static inline __attribute__((always_inline))
+unsigned char *__x18_base(void)
+{
+    unsigned char *base;
+    __asm__ volatile ("mov %0, x18" : "=r"(base));
+    return base;
+}
+
+static inline __attribute__((always_inline))
+unsigned long long __readx18qword(unsigned long offset)
+{
+    return *(volatile unsigned long long *)(__x18_base() + offset);
+}
 #endif
 
 #ifdef __MINGW32__
