@@ -79,7 +79,6 @@ COMPILER_OPTIONS BOOL getSyscalls(PVOID pNtdllBase, Syscall *Syscalls[], DWORD d
 	SYSCALL_LIST SyscallList;
 	SyscallList.dwCount = 0;
 
-	RDI_LOG(0xC1, (ULONG_PTR)pNtdllBase);
 
 	// STEP 1: Enumerate all functions exported from ntdll.dll that begin with "Zw".
 	for (DWORD dwIdxfName = 0; dwIdxfName < pExportDir->NumberOfNames; dwIdxfName++)
@@ -95,7 +94,6 @@ COMPILER_OPTIONS BOOL getSyscalls(PVOID pNtdllBase, Syscall *Syscalls[], DWORD d
 		}
 	}
 
-	RDI_LOG(0xC2, SyscallList.dwCount);
 
 	// STEP 2: Sort the list of Zw* functions by their memory address.
 	// The index 'i' of a function in this sorted list is its true syscall number. This holds for all architectures.
