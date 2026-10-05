@@ -39,11 +39,14 @@
 #define GETPROCADDRESS_HASH          0x7C0DFCAA
 
 //===============================================================================================//
-#pragma intrinsic( _rotr )
-
+// NOTE: Do NOT use the _rotr intrinsic here. clang lowers it to a call to the
+// UCRT _rotr function, which goes through mingw's import thunk + an (unbound)
+// IAT entry. The reflective loader executes from the raw PE file copy before
+// its IAT is bound, so any imported call crashes the process. Keep this pure
+// C so the compiler emits a rotate instruction inline.
 __forceinline DWORD ror(DWORD d)
 {
-    return _rotr(d, HASH_KEY);
+    return (d >> HASH_KEY) | (d << (32 - HASH_KEY));
 }
 
 __forceinline DWORD _hash(char* c)

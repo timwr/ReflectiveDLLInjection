@@ -2,14 +2,30 @@
 cmake_minimum_required(VERSION 3.16)
 project(ReflectivePayload LANGUAGES C CXX)
 
+# Pick the DoSyscall trampoline for the target arch and assembler:
+# .asm is armasm/MASM syntax (MSVC only), .s is GNU assembler syntax (mingw).
+if(MSVC)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+        set(RDI_TRAMPOLINE dll/src/GateTrampolineARM64.asm)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+        set(RDI_TRAMPOLINE dll/src/GateTrampoline64.asm)
+    else()
+        set(RDI_TRAMPOLINE dll/src/GateTrampoline32.asm)
+    endif()
+else()
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+        set(RDI_TRAMPOLINE dll/src/GateTrampolineARM64.s)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+        set(RDI_TRAMPOLINE dll/src/GateTrampoline64.s)
+    else()
+        set(RDI_TRAMPOLINE dll/src/GateTrampoline32.s)
+    endif()
+endif()
+
 add_library(reflective_dll
     dll/src/DirectSyscall.c
     dll/src/DirectSyscall.h
-    dll/src/GateTrampoline32.asm
-    dll/src/GateTrampoline32.s
-    dll/src/GateTrampoline64.asm
-    dll/src/GateTrampoline64.s
-    dll/src/GateTrampolineARM64.asm
+    ${RDI_TRAMPOLINE}
     dll/src/ReflectiveDll.c
     dll/src/ReflectiveLoader.c
     dll/src/ReflectiveLoader.h

@@ -30,7 +30,172 @@
 // #pragma clang optimize off
 // #endif
 #include "ReflectiveLoader.h"
-#include "DirectSyscall.c"
+
+// ---- RDI debug logging (enabled via -DRDI_DEBUG_LOG) -------------------------
+// NOTE: this logger must be safe to execute from the raw PE file copy (before
+// the image is mapped). It therefore contains NO .rdata string references:
+// every string is built on the stack byte-by-byte, and kernel32 is resolved
+// manually by walking the PEB loader lists.
+#ifdef RDI_DEBUG_LOG
+typedef void *RDI_HANDLE;
+typedef RDI_HANDLE (WINAPI *pfnCreateFileA_t)(LPCSTR, DWORD, DWORD, LPVOID, DWORD, DWORD, RDI_HANDLE);
+typedef BOOL (WINAPI *pfnWriteFile_t)(RDI_HANDLE, LPCVOID, DWORD, LPDWORD, LPVOID);
+typedef BOOL (WINAPI *pfnCloseHandle_t)(RDI_HANDLE);
+
+static int _fold_eq(const char *a, const char *b, DWORD cbLen)
+{
+	for (DWORD i = 0; i < cbLen; i++) {
+		char ca = a[i], cb = b[i];
+		if (ca >= 'a' && ca <= 'z') ca -= 0x20;
+		if (cb >= 'a' && cb <= 'z') cb -= 0x20;
+		if (ca != cb)
+			return 0;
+	}
+	return 1;
+}
+
+static void rdi_log(DWORD dwStage, ULONG_PTR val)
+{
+	// Build the strings we need on the stack (no .rdata references).
+	char k32name[13];  // "KERNEL32.DLL"
+	char szPath[24];   // "C:\Users\Public\rdi.log"
+	char aCreate[12];  // "CreateFileA"
+	char aWrite[10];   // "WriteFile"
+	char aClose[12];   // "CloseHandle"
+
+	k32name[0] = 'K'; k32name[1] = 'E'; k32name[2] = 'R'; k32name[3] = 'N';
+	k32name[4] = 'E'; k32name[5] = 'L'; k32name[6] = '3'; k32name[7] = '2';
+	k32name[8] = '.'; k32name[9] = 'D'; k32name[10] = 'L'; k32name[11] = 'L';
+	k32name[12] = 0;
+
+	szPath[0] = 'C'; szPath[1] = ':'; szPath[2] = '\\'; szPath[3] = 'U';
+	szPath[4] = 's'; szPath[5] = 'e'; szPath[6] = 'r'; szPath[7] = 's';
+	szPath[8] = '\\'; szPath[9] = 'P'; szPath[10] = 'u'; szPath[11] = 'b';
+	szPath[12] = 'l'; szPath[13] = 'i'; szPath[14] = 'c'; szPath[15] = '\\';
+	szPath[16] = 'r'; szPath[17] = 'd'; szPath[18] = 'i'; szPath[19] = '.';
+	szPath[20] = 'l'; szPath[21] = 'o'; szPath[22] = 'g'; szPath[23] = 0;
+
+	aCreate[0] = 'C'; aCreate[1] = 'r'; aCreate[2] = 'e'; aCreate[3] = 'a';
+	aCreate[4] = 't'; aCreate[5] = 'e'; aCreate[6] = 'F'; aCreate[7] = 'i';
+	aCreate[8] = 'l'; aCreate[9] = 'e'; aCreate[10] = 'A'; aCreate[11] = 0;
+
+	aWrite[0] = 'W'; aWrite[1] = 'r'; aWrite[2] = 'i'; aWrite[3] = 't';
+	aWrite[4] = 'e'; aWrite[5] = 'F'; aWrite[6] = 'i'; aWrite[7] = 'l';
+	aWrite[8] = 'e'; aWrite[9] = 0;
+
+	aClose[0] = 'C'; aClose[1] = 'l'; aClose[2] = 'o'; aClose[3] = 's';
+	aClose[4] = 'e'; aClose[5] = 'H'; aClose[6] = 'a'; aClose[7] = 'n';
+	aClose[8] = 'd'; aClose[9] = 'l'; aClose[10] = 'e'; aClose[11] = 0;
+
+	// Walk the PEB loader lists (same technique as _resolve_dependencies) to
+	// find kernel32's base. Entry base = InMemoryOrderLinks.
+	ULONG_PTR uiPeb = 0;
+	__asm__ volatile ("mov %0, x18" : "=r"(uiPeb));
+	uiPeb = *(ULONG_PTR *)(uiPeb + 0x60);            // TEB->ProcessEnvironmentBlock
+	ULONG_PTR uiLdr = *(ULONG_PTR *)(uiPeb + 0x18);  // PEB->Ldr
+	ULONG_PTR pEntry = *(ULONG_PTR *)(uiLdr + 0x20); // InMemoryOrderModuleList.Flink
+
+	ULONG_PTR uiKernel32 = 0;
+	while (pEntry) {
+		ULONG_PTR uiDllBase = *(ULONG_PTR *)(pEntry + 0x20);
+		USHORT cbLen = *(USHORT *)(pEntry + 0x48);       // BaseDllName.Length
+		ULONG_PTR pwsName = *(ULONG_PTR *)(pEntry + 0x50); // BaseDllName.Buffer
+		// Wide -> narrow fold-compare against "KERNEL32.DLL" (12 chars).
+		if (cbLen / 2 == 12) {
+			char szStack[12];
+			for (int i = 0; i < 12; i++)
+				szStack[i] = (char)(*(WCHAR *)(pwsName + (ULONG_PTR)i * 2) & 0xFF);
+			if (_fold_eq(szStack, k32name, 12)) {
+				uiKernel32 = uiDllBase;
+				break;
+			}
+		}
+		pEntry = *(ULONG_PTR *)pEntry; // LIST_ENTRY.Flink
+	}
+	if (!uiKernel32)
+		return;
+
+	// Parse kernel32's export table and find the three logging APIs.
+	ULONG_PTR uiNtHeaders = uiKernel32 + *(LONG *)(uiKernel32 + 0x3c);
+	ULONG_PTR uiOptHeader = uiNtHeaders + 0x18;
+	ULONG_PTR uiExportRva = *(DWORD *)(uiOptHeader + 112); // DataDirectory[0].VirtualAddress
+	ULONG_PTR uiExportDir = uiKernel32 + uiExportRva;
+
+	DWORD dwNumNames = *(DWORD *)(uiExportDir + 0x18);
+	ULONG_PTR uiNames = uiKernel32 + *(DWORD *)(uiExportDir + 0x20);
+	ULONG_PTR uiOrds  = uiKernel32 + *(DWORD *)(uiExportDir + 0x24);
+	ULONG_PTR uiFuncs = uiKernel32 + *(DWORD *)(uiExportDir + 0x1c);
+
+	pfnCreateFileA_t pCreateFileA = NULL;
+	pfnWriteFile_t pWriteFile = NULL;
+	pfnCloseHandle_t pCloseHandle = NULL;
+	for (DWORD i = 0; i < dwNumNames && (!pCreateFileA || !pWriteFile || !pCloseHandle); i++) {
+		ULONG_PTR uiNameRva = *(DWORD *)(uiNames + (ULONG_PTR)i * 4);
+		const char *pName = (const char *)(uiKernel32 + uiNameRva);
+		WORD wOrd = *(WORD *)(uiOrds + (ULONG_PTR)i * 2);
+		ULONG_PTR uiFunc = uiKernel32 + *(DWORD *)(uiFuncs + (ULONG_PTR)wOrd * 4);
+		// Exact-length + case-sensitive compare against the stack strings.
+		if (pName[0] == 'C' && pName[1] == 'r' && pName[2] == 'e' && pName[3] == 'a' &&
+		    pName[4] == 't' && pName[5] == 'e' && pName[6] == 'F' && pName[7] == 'i' &&
+		    pName[8] == 'l' && pName[9] == 'e' && pName[10] == 'A' && pName[11] == 0)
+			pCreateFileA = (pfnCreateFileA_t)uiFunc;
+		else if (pName[0] == 'W' && pName[1] == 'r' && pName[2] == 'i' && pName[3] == 't' &&
+		         pName[4] == 'e' && pName[5] == 'F' && pName[6] == 'i' && pName[7] == 'l' &&
+		         pName[8] == 'e' && pName[9] == 0)
+			pWriteFile = (pfnWriteFile_t)uiFunc;
+		else if (pName[0] == 'C' && pName[1] == 'l' && pName[2] == 'o' && pName[3] == 's' &&
+		         pName[4] == 'e' && pName[5] == 'H' && pName[6] == 'a' && pName[7] == 'n' &&
+		         pName[8] == 'd' && pName[9] == 'l' && pName[10] == 'e' && pName[11] == 0)
+			pCloseHandle = (pfnCloseHandle_t)uiFunc;
+	}
+	if (!pCreateFileA || !pWriteFile || !pCloseHandle)
+		return;
+
+	// One file per stage: "C:\Users\Public\rdiXX.log" (XX = stage hex).
+	// CREATE_ALWAYS(2) + GENERIC_WRITE(0x40000000): a fresh single-line file
+	// per call, avoiding append semantics entirely.
+	szPath[16 + 0] = 'r'; szPath[16 + 1] = 'd'; szPath[16 + 2] = 'i';
+	szPath[16 + 3] = (char)((dwStage >> 4 & 0xF) < 10 ? '0' + (dwStage >> 4 & 0xF) : 'A' + (dwStage >> 4 & 0xF) - 10);
+	szPath[16 + 4] = (char)((dwStage & 0xF) < 10 ? '0' + (dwStage & 0xF) : 'A' + (dwStage & 0xF) - 10);
+	szPath[16 + 5] = '.'; szPath[16 + 6] = 'l'; szPath[16 + 7] = 'o';
+	szPath[16 + 8] = 'g'; szPath[16 + 9] = 0;
+
+	// "S <val hex16>\r\n" built in a stack buffer.
+	char buf[24];
+	DWORD len = 0;
+	buf[len++] = 'S';
+	buf[len++] = ' ';
+	for (int shift = 60; shift >= 0; shift -= 4) {
+		ULONG_PTR nib = (val >> shift) & 0xF;
+		buf[len++] = (char)(nib < 10 ? '0' + nib : 'A' + nib - 10);
+	}
+	buf[len++] = '\r';
+	buf[len++] = '\n';
+	RDI_HANDLE h = pCreateFileA(szPath, 0x40000000, 0x3, NULL, 2, 0x80, NULL);
+	if (h == (RDI_HANDLE)-1 || !h)
+		return;
+	DWORD written = 0;
+	pWriteFile(h, buf, len, &written, NULL);
+	pCloseHandle(h);
+}
+
+#define RDI_LOG(stage, val) rdi_log((DWORD)(stage), (ULONG_PTR)(val))
+#else
+#define RDI_LOG(stage, val) ((void)0)
+#endif
+
+// Crash-marker: write a canary to a wild address derived from __LINE__ so a
+// crash names the exact source line in the WER event log (faulting address
+// 0x4141410000 | (line<<8)). Enabled via -DRDI_DEBUG_FAULT.
+#ifdef RDI_DEBUG_FAULT
+#define RDI_FAULT(line) \
+	do { \
+		volatile ULONG *pCanary = (volatile ULONG *)(0x4141410000ULL + ((ULONG_PTR)(line) << 8)); \
+		*pCanary = 0x42424242; \
+	} while (0)
+#else
+#define RDI_FAULT(line) ((void)0)
+#endif
 
 // Our loader will set this to a pseudo correct HINSTANCE/HMODULE value
 HINSTANCE hAppInstance = NULL;
@@ -90,6 +255,7 @@ __declspec(noinline) ULONG_PTR caller(VOID)
 // Helper to return a unique error code, making remote debugging possible.
 static ULONG_PTR _report_and_exit(DWORD dwErrorCode)
 {
+	RDI_LOG(0xE0, dwErrorCode);
 	return dwErrorCode;
 }
 
@@ -126,6 +292,10 @@ typedef struct
 
 } LOADER_CONTEXT, *PLOADER_CONTEXT;
 
+
+#include "DirectSyscall.c"
+
+
 //===============================================================================================//
 //                                    INTERNAL HELPER FUNCTIONS                                  //
 //===============================================================================================//
@@ -134,8 +304,12 @@ typedef struct
 static COMPILER_OPTIONS ULONG_PTR _find_image_base(VOID)
 {
 	ULONG_PTR uiLibraryAddress = caller();
+	RDI_LOG(0x12, uiLibraryAddress);
+	DWORD dwIters = 0;
 	while (TRUE)
 	{
+		if ((++dwIters & 0xFFFF) == 0)
+			RDI_LOG(0x13, uiLibraryAddress);
 		PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)uiLibraryAddress;
 		if (pDosHeader->e_magic == IMAGE_DOS_SIGNATURE)
 		{
@@ -144,7 +318,10 @@ static COMPILER_OPTIONS ULONG_PTR _find_image_base(VOID)
 			if (uiHeaderValue >= sizeof(IMAGE_DOS_HEADER) && uiHeaderValue < 1024)
 			{
 				if (((PIMAGE_NT_HEADERS)(uiLibraryAddress + uiHeaderValue))->Signature == IMAGE_NT_SIGNATURE)
+				{
+					RDI_LOG(0x14, uiLibraryAddress);
 					return uiLibraryAddress;
+				}
 			}
 		}
 		uiLibraryAddress--;
@@ -212,6 +389,8 @@ static COMPILER_OPTIONS DWORD _resolve_dependencies(PLOADER_CONTEXT pContext)
 			pModuleName++;
 		} while (--usCounter);
 
+		RDI_LOG(0xB0 + usCounter, dwModuleHash);
+
 		if (dwModuleHash == KERNEL32DLL_HASH)
 		{
 			bFoundKernel32 = TRUE;
@@ -269,8 +448,14 @@ static COMPILER_OPTIONS DWORD _resolve_dependencies(PLOADER_CONTEXT pContext)
 	if (!pContext->pLoadLibraryA || !pContext->pGetProcAddress)
 		return RDI_ERR_NO_EXPORTS;
 
+	RDI_LOG(3, pContext->pLoadLibraryA);
+	RDI_LOG(4, pContext->pGetProcAddress);
+	RDI_LOG(0xC0, pContext->pNtdllBase);
+
 	if (!getSyscalls(pContext->pNtdllBase, pSyscalls, SyscallIndexMax))
 		return RDI_ERR_GETSYSCALLS_FAIL;
+
+	RDI_LOG(5, pSyscalls[0] ? pSyscalls[0]->pStub : 0);
 
 	return RDI_SUCCESS;
 }
@@ -470,6 +655,8 @@ static COMPILER_OPTIONS ULONG_PTR _call_entry_point(PLOADER_CONTEXT pContext, LP
 	// Flush the instruction cache to avoid executing stale code after relocations.
 	rdiNtFlushInstructionCache(&pContext->Syscalls[SyscallIndexFlushInstructionCache], (HANDLE)-1, NULL, 0);
 
+	RDI_LOG(0xA0, pEntryPoint);
+
 // If we are injecting a DLL via LoadRemoteLibraryR, we call DllMain and pass in our parameter (via the DllMain lpReserved parameter).
 // Otherwise, if we are injecting a DLL via a stub, we call DllMain with no parameter.
 #ifdef REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR
@@ -493,14 +680,19 @@ RDIDLLEXPORT COMPILER_OPTIONS ULONG_PTR __cdecl ReflectiveLoader(LPVOID lpParame
 RDIDLLEXPORT COMPILER_OPTIONS ULONG_PTR WINAPI ReflectiveLoader(VOID)
 #endif
 {
-	// NOTE:    Using SecureZeroMemory instead of `LOADER_CONTEXT context = { 0 }` because of segmentfault in metsrv.
-	// DETAILS: Under the hood, MSVC zeros the structure with a memset call, for some reason this is crashing sometimes.
-	//          The bug is build-specific, meaning compiling the same source may result in having or not having this bug.
-	//          Also, this seems to be happening only on metsrv, where probably we are calling the ReflectiveLoader in hacky
-	//          context. using SecureZeroMemory avoid calling memset and performs the zero setting inplace.
+	// NOTE:    Zeroing by hand instead of SecureZeroMemory/memset: the loader runs
+	//          from the raw PE file copy before its IAT is bound, so it must not
+	//          call any imported function (SecureZeroMemory can lower to a memset
+	//          import call via an unbound IAT thunk).
 
 	LOADER_CONTEXT context;
-	SecureZeroMemory(&context, sizeof(LOADER_CONTEXT));
+	{
+		volatile ULONG_PTR *p = (volatile ULONG_PTR *)&context;
+		for (SIZE_T i = 0; i < sizeof(LOADER_CONTEXT) / sizeof(ULONG_PTR); i++)
+			p[i] = 0;
+	}
+	RDI_LOG(1, 0);
+	RDI_LOG(0x11, (ULONG_PTR)&context);
 
 	context.Syscalls[SyscallIndexAllocateVirtualMemory].dwCryptedHash = ZWALLOCATEVIRTUALMEMORY_HASH;
 	context.Syscalls[SyscallIndexAllocateVirtualMemory].dwNumberOfArgs = 6;
@@ -529,17 +721,35 @@ RDIDLLEXPORT COMPILER_OPTIONS ULONG_PTR WINAPI ReflectiveLoader(VOID)
 		return _report_and_exit(dwResolveResult);
 
 	// STEP 2 & 3: Allocate a new permanent memory location and copy the image.
+	RDI_LOG(2, context.uiLibraryAddress);
+
 	if (!_load_image_into_memory(&context))
 		return _report_and_exit(RDI_ERR_ALLOC_MEM);
 
+	RDI_LOG(6, context.uiBaseAddress);
+
 	// STEP 4: Process the image's import table.
 	_process_imports(&context);
+	RDI_LOG(7, 0);
 
 	// STEP 5: Process the image's base relocations.
 	_process_relocations(&context);
+	RDI_LOG(8, context.uiBaseAddress - context.pNtHeaders->OptionalHeader.ImageBase);
 
 	// STEP 6: Set final memory protections on the image sections.
 	_set_memory_protections(&context);
+	RDI_LOG(9, context.pNtHeaders->OptionalHeader.AddressOfEntryPoint);
+
+	// STEP 7 & 8
+	ULONG_PTR uiEntryPoint = _call_entry_point(&context,
+#ifdef REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR
+								 lpParameter
+#else
+								 NULL
+#endif
+	);
+	RDI_LOG(0xA1, uiEntryPoint);
+	return uiEntryPoint;
 
 	// STEP 7 & 8: Call the DLL's entry point and return the new base address.
 	return _call_entry_point(&context,
