@@ -483,11 +483,10 @@ static COMPILER_OPTIONS ULONG_PTR _call_entry_point(PLOADER_CONTEXT pContext, LP
 // If we are injecting a DLL via LoadRemoteLibraryR, we call DllMain and pass in our parameter (via the DllMain lpReserved parameter).
 // Otherwise, if we are injecting a DLL via a stub, we call DllMain with no parameter.
 #ifdef REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR
-	((DLLMAIN)pEntryPoint)((HINSTANCE)pContext->uiBaseAddress, DLL_PROCESS_ATTACH, lpParameter);
+	return ((DLLMAIN)pEntryPoint)((HINSTANCE)pContext->uiBaseAddress, DLL_PROCESS_ATTACH, lpParameter);
 #else
-	((DLLMAIN)pEntryPoint)((HINSTANCE)pContext->uiBaseAddress, DLL_PROCESS_ATTACH, NULL);
+	return ((DLLMAIN)pEntryPoint)((HINSTANCE)pContext->uiBaseAddress, DLL_PROCESS_ATTACH, NULL);
 #endif
-	return pEntryPoint;
 }
 
 //===============================================================================================//

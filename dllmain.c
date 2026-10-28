@@ -15,12 +15,13 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved)
     case DLL_PROCESS_ATTACH:
       /* Runs the app (curl command loop) in the loader thread. Blocks
        * DllMain -- acceptable for a test payload. */
-      run_main(0, 0, 0, 0);
-      break;
+      return (BOOL)run_main(0, 0, 0, 0);
     case DLL_PROCESS_DETACH:
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
       break;
   }
+  (void)hinstDLL;
+  (void)lpReserved;
   return TRUE;
 }

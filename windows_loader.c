@@ -185,7 +185,7 @@ int entry_function()
 		// ReflectiveLoader() maps the image and calls the entry point/DllMain itself.
 		// Pass NULL explicitly: a no-arg call would leave a stale x0 as lpParameter
 		// on ARM64, which the loader forwards to the entry point.
-		(void)pReflectiveLoader(NULL);
+		return (int)pReflectiveLoader(NULL);
 	}
 
 	return 0;
